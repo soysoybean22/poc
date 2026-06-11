@@ -27,3 +27,11 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+// JSON POC 실행: ./gradlew runPoc --console=plain
+tasks.register<JavaExec>("runPoc") {
+    group = "application"
+    description = "JSON 파싱·저장 POC 실행"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("org.example.JsonPocMain")
+}
