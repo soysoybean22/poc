@@ -40,8 +40,8 @@ public class JsonRepository {
         long nextId = nextId(records);
 
         ObjectNode record = handler.getMapper().createObjectNode();
-        record.put("id", nextId);
         record.setAll((ObjectNode) data);   // 사용자 입력 필드 병합
+        record.put("id", nextId);           // 자동 부여 id가 항상 우선 (사용자 입력 id 무시)
 
         records.add(record);
         save(records);
