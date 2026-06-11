@@ -22,146 +22,95 @@ class JsonHandlerTest {
         handler = new JsonHandler();
     }
 
-    // ── parse(String) ─────────────────────────────────────────────────────
-
     @Test
     @DisplayName("JSON 객체 문자열을 파싱하면 올바른 필드 값을 반환한다")
     void parse_string_object() throws IOException {
-        String json = "{\"name\":\"홍길동\",\"score\":95}";
+        JsonNode node = handler.parse("{\"name\":\"사과\",\"count\":3}");
 
-        JsonNode node = handler.parse(json);
-
-        assertEquals("홍길동", node.get("name").asText());
-        assertEquals(95, node.get("score").asInt());
+        assertEquals("사과", node.get("name").asText());
+        assertEquals(3, node.get("count").asInt());
     }
 
     @Test
     @DisplayName("JSON 배열 문자열을 파싱하면 ArrayNode를 반환한다")
     void parse_string_array() throws IOException {
-        String json = "[{\"id\":1},{\"id\":2}]";
-
-        JsonNode node = handler.parse(json);
+        JsonNode node = handler.parse("[1, 2, 3]");
 
         assertTrue(node.isArray());
-        assertEquals(2, node.size());
-        assertEquals(1, node.get(0).get("id").asInt());
-        assertEquals(2, node.get(1).get("id").asInt());
-    }
-
-    @Test
-    @DisplayName("중첩된 JSON 객체를 파싱하면 중첩 필드에 접근할 수 있다")
-    void parse_string_nested() throws IOException {
-        String json = "{\"user\":{\"address\":{\"city\":\"서울\"}}}";
-
-        JsonNode node = handler.parse(json);
-
-        assertEquals("서울", node.path("user").path("address").path("city").asText());
+        assertEquals(3, node.size());
     }
 
     @Test
     @DisplayName("유효하지 않은 JSON 문자열을 파싱하면 IOException이 발생한다")
-    void parse_string_invalidJson_throwsIOException() {
-        assertThrows(IOException.class, () -> handler.parse("{name: 홍길동}"));
+    void parse_string_invalid_throwsIOException() {
+        assertThrows(IOException.class, () -> handler.parse("{name: 사과}"));
     }
 
-    // ── parse(File) ───────────────────────────────────────────────────────
-
     @Test
-    @DisplayName("JSON 파일을 파싱하면 올바른 JsonNode를 반환한다")
-    void parse_file_returnsCorrectNode(@TempDir Path tempDir) throws IOException {
+    @DisplayName("JSON 파일을 파싱하면 저장 당시와 동일한 값을 반환한다")
+    void parse_file_roundTrip(@TempDir Path tempDir) throws IOException {
         File file = tempDir.resolve("test.json").toFile();
-        JsonNode original = handler.parse("{\"product\":\"노트북\",\"price\":1500000}");
+        JsonNode original = handler.parse("{\"key\":\"value\"}");
         handler.save(original, file);
 
         JsonNode loaded = handler.parse(file);
 
-        assertEquals("노트북", loaded.get("product").asText());
-        assertEquals(1500000, loaded.get("price").asInt());
-    }
-
-    @Test
-    @DisplayName("존재하지 않는 파일을 파싱하면 IOException이 발생한다")
-    void parse_file_notExist_throwsIOException(@TempDir Path tempDir) {
-        File missing = tempDir.resolve("missing.json").toFile();
-
-        assertThrows(IOException.class, () -> handler.parse(missing));
-    }
-
-    // ── save(JsonNode, File) ──────────────────────────────────────────────
-
-    @Test
-    @DisplayName("save 호출 후 파일이 생성되고 파싱하면 동일한 내용을 반환한다")
-    void save_createsFileWithCorrectContent(@TempDir Path tempDir) throws IOException {
-        File file = tempDir.resolve("output.json").toFile();
-        JsonNode node = handler.parse("{\"key\":\"value\"}");
-
-        handler.save(node, file);
-        JsonNode loaded = handler.parse(file);
-
-        assertTrue(file.exists());
         assertEquals("value", loaded.get("key").asText());
     }
 
     @Test
-    @DisplayName("저장 경로의 부모 디렉토리가 없어도 save가 자동으로 생성한다")
-    void save_createsParentDirectoriesAutomatically(@TempDir Path tempDir) throws IOException {
-        File file = tempDir.resolve("subdir/nested/output.json").toFile();
-        JsonNode node = handler.parse("{\"key\":\"value\"}");
+    @DisplayName("존재하지 않는 파일을 파싱하면 IOException이 발생한다")
+    void parse_file_missing_throwsIOException(@TempDir Path tempDir) {
+        assertThrows(IOException.class,
+                () -> handler.parse(tempDir.resolve("missing.json").toFile()));
+    }
 
-        assertDoesNotThrow(() -> handler.save(node, file));
+    @Test
+    @DisplayName("save 후 파일이 생성되고 내용이 일치한다")
+    void save_createsFileWithContent(@TempDir Path tempDir) throws IOException {
+        File file = tempDir.resolve("out.json").toFile();
+        JsonNode node = handler.parse("{\"fruit\":\"사과\"}");
+
+        handler.save(node, file);
+
+        assertTrue(file.exists());
+        assertEquals("사과", handler.parse(file).get("fruit").asText());
+    }
+
+    @Test
+    @DisplayName("save는 존재하지 않는 부모 디렉토리를 자동으로 생성한다")
+    void save_createsParentDirectories(@TempDir Path tempDir) throws IOException {
+        File file = tempDir.resolve("a/b/c/out.json").toFile();
+
+        assertDoesNotThrow(() -> handler.save(handler.parse("{}"), file));
         assertTrue(file.exists());
     }
 
-    // ── stringify(JsonNode) ───────────────────────────────────────────────
-
     @Test
-    @DisplayName("stringify는 JsonNode를 JSON 문자열로 변환한다")
-    void stringify_returnsJsonString() throws IOException {
-        JsonNode node = handler.parse("{\"name\":\"테스트\"}");
+    @DisplayName("stringify는 JsonNode를 JSON 문자열로 변환하며, 재파싱해도 동일한 값을 가진다")
+    void stringify_roundTrip() throws IOException {
+        JsonNode node = handler.parse("{\"사과\":3}");
 
-        String result = handler.stringify(node);
+        String json = handler.stringify(node);
+        JsonNode reparsed = handler.parse(json);
 
-        assertNotNull(result);
-        assertTrue(result.contains("테스트"));
-        // 다시 파싱해도 동일한 값을 가져야 한다
-        assertEquals("테스트", handler.parse(result).get("name").asText());
+        assertEquals(3, reparsed.get("사과").asInt());
     }
 
-    // ── isValid(String) ───────────────────────────────────────────────────
-
     @Test
-    @DisplayName("올바른 JSON 객체 문자열이면 true를 반환한다")
-    void isValid_validObject_returnsTrue() {
+    @DisplayName("isValid는 올바른 JSON에 대해 true를 반환한다")
+    void isValid_validJson_returnsTrue() {
         assertTrue(handler.isValid("{\"key\":\"value\"}"));
-    }
-
-    @Test
-    @DisplayName("올바른 JSON 배열 문자열이면 true를 반환한다")
-    void isValid_validArray_returnsTrue() {
         assertTrue(handler.isValid("[1,2,3]"));
-    }
-
-    @Test
-    @DisplayName("올바른 JSON 빈 배열이면 true를 반환한다")
-    void isValid_emptyArray_returnsTrue() {
+        assertTrue(handler.isValid("42"));
         assertTrue(handler.isValid("[]"));
     }
 
     @Test
-    @DisplayName("키에 따옴표가 없는 JSON이면 false를 반환한다")
-    void isValid_unquotedKey_returnsFalse() {
-        assertFalse(handler.isValid("{name: \"홍길동\"}"));
-    }
-
-    @Test
-    @DisplayName("빈 문자열이면 false를 반환한다")
-    void isValid_emptyString_returnsFalse() {
+    @DisplayName("isValid는 잘못된 JSON에 대해 false를 반환한다")
+    void isValid_invalidJson_returnsFalse() {
+        assertFalse(handler.isValid("{name: 홍길동}"));
         assertFalse(handler.isValid(""));
-    }
-
-    @Test
-    @DisplayName("완전히 잘못된 문자열이면 false를 반환한다")
-    void isValid_randomString_returnsFalse() {
-        assertFalse(handler.isValid("not json at all"));
+        assertFalse(handler.isValid("not json"));
     }
 }

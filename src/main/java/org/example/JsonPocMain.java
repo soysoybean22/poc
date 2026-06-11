@@ -1,87 +1,60 @@
 package org.example;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import org.example.db.JsonDatabase;
 import org.example.handler.JsonHandler;
 
 import java.io.File;
+import java.util.Map;
 
 /**
- * JSON POC 진입점.
- * 목표: JSON 데이터를 받아 파싱하고 파일로 저장하는 핵심 흐름을 검증한다.
+ * JSON DB POC 진입점.
+ * 목표: JSON 파일이 DB 서버처럼 동작함을 검증한다.
+ *       앱을 재시작해도 데이터가 유지되는(영속성) 구조를 확인한다.
  */
 public class JsonPocMain {
 
     public static void main(String[] args) throws Exception {
         JsonHandler handler = new JsonHandler();
-        File outputDir = new File("data");
-        outputDir.mkdirs();
+        JsonDatabase db = new JsonDatabase(handler, new File("data/db.json"));
 
-        // ── Step 1. JSON 문자열 파싱 ─────────────────────────────────────
-        System.out.println("=== Step 1. JSON 문자열 파싱 ===");
+        // ── Step 1. 데이터 저장 (JSON 파일 = DB 서버에 쓰기) ─────────────
+        System.out.println("=== Step 1. DB에 데이터 저장 ===");
+        db.put("사과",   handler.parse("3"));
+        db.put("바나나", handler.parse("5"));
+        db.put("오렌지", handler.parse("2"));
+        db.put("상품",   handler.parse("{\"name\":\"노트북\",\"price\":1500000}"));
+        System.out.println("저장 완료 → data/db.json 확인");
 
-        String jsonString = """
-                {
-                  "id": 1,
-                  "product": "노트북",
-                  "price": 1500000,
-                  "stock": 10,
-                  "tags": ["전자제품", "IT"]
-                }
-                """;
+        // ── Step 2. 키로 조회 (key 입력 → value 출력) ─────────────────────
+        System.out.println("\n=== Step 2. 키로 조회 ===");
+        System.out.println("사과   → " + db.get("사과").map(JsonNode::asText).orElse("없음"));
+        System.out.println("바나나 → " + db.get("바나나").map(JsonNode::asText).orElse("없음"));
+        System.out.println("없는키 → " + db.get("포도").map(JsonNode::asText).orElse("없음"));
 
-        JsonNode node = handler.parse(jsonString);
-
-        System.out.println("product : " + node.get("product").asText());
-        System.out.println("price   : " + node.get("price").asInt());
-        System.out.println("stock   : " + node.get("stock").asInt());
-        System.out.println("tags[0] : " + node.get("tags").get(0).asText());
-
-        // ── Step 2. 파싱한 데이터를 JSON 파일로 저장 ─────────────────────
-        System.out.println("\n=== Step 2. JSON 파일 저장 ===");
-
-        File saveFile = new File(outputDir, "sample.json");
-        handler.save(node, saveFile);
-        System.out.println("저장 완료: " + saveFile.getAbsolutePath());
-
-        // ── Step 3. 저장된 파일을 다시 파싱 ─────────────────────────────
-        System.out.println("\n=== Step 3. JSON 파일 파싱 ===");
-
-        JsonNode loaded = handler.parse(saveFile);
-        System.out.println("파일에서 읽은 product : " + loaded.get("product").asText());
-        System.out.println("파일에서 읽은 price   : " + loaded.get("price").asInt());
-
-        // ── Step 4. JSON 배열 파싱 ───────────────────────────────────────
-        System.out.println("\n=== Step 4. JSON 배열 파싱 ===");
-
-        String arrayJson = """
-                [
-                  {"id": 1, "name": "사과", "price": 1000},
-                  {"id": 2, "name": "바나나", "price": 500},
-                  {"id": 3, "name": "오렌지", "price": 1500}
-                ]
-                """;
-
-        JsonNode array = handler.parse(arrayJson);
-        for (JsonNode item : array) {
-            System.out.printf("  id=%-3s name=%-8s price=%s%n",
-                    item.get("id").asText(),
-                    item.get("name").asText(),
-                    item.get("price").asText());
+        // ── Step 3. 전체 조회 ────────────────────────────────────────────
+        System.out.println("\n=== Step 3. 전체 조회 ===");
+        for (Map.Entry<String, JsonNode> entry : db.getAll().entrySet()) {
+            System.out.println("  " + entry.getKey() + " → " + entry.getValue());
         }
 
-        // ── Step 5. JSON 배열을 파일로 저장 ─────────────────────────────
-        System.out.println("\n=== Step 5. JSON 배열 파일 저장 ===");
+        // ── Step 4. 값 수정 ───────────────────────────────────────────────
+        System.out.println("\n=== Step 4. 값 수정 (사과: 3 → 10) ===");
+        db.update("사과", handler.parse("10"));
+        System.out.println("사과 → " + db.get("사과").map(JsonNode::asText).orElse("없음"));
 
-        File arrayFile = new File(outputDir, "items.json");
-        handler.save(array, arrayFile);
-        System.out.println("저장 완료: " + arrayFile.getAbsolutePath());
+        // ── Step 5. 삭제 ──────────────────────────────────────────────────
+        System.out.println("\n=== Step 5. 삭제 (바나나) ===");
+        db.delete("바나나");
+        System.out.println("바나나 존재 여부: " + db.exists("바나나"));
 
-        // ── Step 6. 유효성 검사 ──────────────────────────────────────────
-        System.out.println("\n=== Step 6. JSON 유효성 검사 ===");
+        // ── Step 6. 영속성 확인 ──────────────────────────────────────────
+        System.out.println("\n=== Step 6. 영속성 확인 (파일에서 새로 로드) ===");
+        JsonDatabase reloaded = new JsonDatabase(handler, new File("data/db.json"));
+        for (Map.Entry<String, JsonNode> entry : reloaded.getAll().entrySet()) {
+            System.out.println("  " + entry.getKey() + " → " + entry.getValue());
+        }
 
-        System.out.println("정상 JSON  : " + handler.isValid("{\"key\":\"value\"}"));
-        System.out.println("비정상 JSON: " + handler.isValid("{key: value}"));
-
-        System.out.println("\nPOC 완료. data/ 디렉토리에서 결과를 확인하세요.");
+        System.out.println("\nPOC 완료. data/db.json 에서 최종 상태를 확인하세요.");
     }
 }
