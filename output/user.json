@@ -1,0 +1,12 @@
+{
+  "id" : 99,
+  "name" : "이순신",
+  "email" : "updated@example.com",
+  "age" : 45,
+  "address" : {
+    "street" : "충무로 99",
+    "city" : "서울",
+    "zip_code" : "04522"
+  },
+  "phone_numbers" : [ "010-5555-5555" ]
+}
