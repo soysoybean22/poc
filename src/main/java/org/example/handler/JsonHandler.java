@@ -47,8 +47,9 @@ public class JsonHandler {
         return mapper.writeValueAsString(node);
     }
 
-    /** JSON 문자열 유효성 검사 */
+    /** JSON 문자열 유효성 검사. null이나 빈 문자열은 false를 반환한다 */
     public boolean isValid(String json) {
+        if (json == null || json.isEmpty()) return false;
         try {
             mapper.readTree(json);
             return true;
