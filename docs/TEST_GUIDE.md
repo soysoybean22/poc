@@ -9,7 +9,7 @@
 1. [사전 준비](#1-사전-준비)
 2. [전체 구조 이해](#2-전체-구조-이해)
 3. [JSON POC 실행 및 검증](#3-json-poc-실행-및-검증)
-4. [CRUD 앱 테스트](#4-crud-앱-테스트)
+4. [CRUD 앱 수동 테스트](#4-crud-앱-수동-테스트)
    - [TC-01 데이터 추가 (Create)](#tc-01-데이터-추가-create)
    - [TC-02 전체 조회 (Read)](#tc-02-전체-조회-read)
    - [TC-03 키로 조회 (Read)](#tc-03-키로-조회-read)
@@ -17,7 +17,10 @@
    - [TC-05 데이터 삭제 (Delete)](#tc-05-데이터-삭제-delete)
 5. [예외 처리 테스트](#5-예외-처리-테스트)
 6. [영속성 테스트](#6-영속성-테스트)
-7. [단위 테스트 실행](#7-단위-테스트-실행)
+7. [자동화 테스트 실행](#7-자동화-테스트-실행)
+   - [단위 테스트 (Unit Test)](#단위-테스트-unit-test)
+   - [Regression Test](#regression-test)
+   - [Safety Test](#safety-test)
 8. [테스트 체크리스트](#8-테스트-체크리스트)
 
 ---
@@ -71,11 +74,21 @@ cd C:\Reviewer\poc
 ```
 src/main/java/org/example/
 ├── handler/
-│   └── JsonHandler.java      # JSON 파싱 & 파일 저장 핵심 유틸
+│   └── JsonHandler.java       # JSON 파싱 & 파일 저장 핵심 유틸
 ├── db/
-│   └── JsonDatabase.java     # JSON 파일을 DB처럼 다루는 key-value 저장소
-├── JsonPocMain.java           # POC 실행 진입점 (DB 동작 검증)
-└── CrudApp.java               # CRUD 콘솔 앱 진입점
+│   └── JsonDatabase.java      # JSON 파일을 DB처럼 다루는 key-value 저장소
+├── JsonPocMain.java            # POC 실행 진입점 (DB 동작 검증)
+└── CrudApp.java                # CRUD 콘솔 앱 진입점
+
+src/test/java/org/example/
+├── handler/
+│   └── JsonHandlerTest.java   # JsonHandler 단위 테스트
+├── db/
+│   └── JsonDatabaseTest.java  # JsonDatabase 단위 테스트
+├── regression/
+│   └── RegressionTest.java    # 기존 기능 동작 보존 검증
+└── safety/
+    └── SafetyTest.java        # Edge 케이스 및 오용 시나리오 검증
 ```
 
 ### 실행 명령어 요약
@@ -84,7 +97,7 @@ src/main/java/org/example/
 |------|--------|
 | POC 검증 | `.\gradlew.bat runPoc --console=plain` |
 | CRUD 앱 실행 | `.\gradlew.bat run --console=plain` |
-| 단위 테스트 | `.\gradlew.bat test --console=plain` |
+| 전체 자동화 테스트 | `.\gradlew.bat test --console=plain` |
 
 ---
 
@@ -142,7 +155,7 @@ POC 완료. data/db.json 에서 최종 상태를 확인하세요.
 
 ---
 
-## 4. CRUD 앱 테스트
+## 4. CRUD 앱 수동 테스트
 
 ### 실행
 
@@ -424,7 +437,7 @@ Step 5.  메뉴 2 → 키: 테스트키 입력
 
 ---
 
-## 7. 단위 테스트 실행
+## 7. 자동화 테스트 실행
 
 코드 변경 후 기능이 깨지지 않았는지 자동으로 검증합니다.
 
@@ -432,18 +445,10 @@ Step 5.  메뉴 2 → 키: 테스트키 입력
 .\gradlew.bat test --console=plain
 ```
 
-### 테스트 구성
-
-| 테스트 클래스 | 대상 | 케이스 수 |
-|---------------|------|-----------|
-| `JsonHandlerTest` | JSON 파싱, 파일 저장, 유효성 검사 | 11개 |
-| `JsonDatabaseTest` | put / get / getAll / update / delete + 영속성 | 25개 |
-
-### 테스트 결과 확인
-
+**정상 완료 시:**
 ```
 BUILD SUCCESSFUL
-36 tests completed, 0 failed
+81 tests completed, 0 failed
 ```
 
 테스트 리포트 상세 내용은 아래 경로에서 확인할 수 있습니다.
@@ -451,6 +456,111 @@ BUILD SUCCESSFUL
 ```
 build/reports/tests/test/index.html
 ```
+
+---
+
+### 단위 테스트 (Unit Test)
+
+개별 클래스의 메서드가 명세대로 동작하는지 검증합니다.
+
+#### `JsonHandlerTest` — 11개
+
+| 테스트 | 검증 내용 |
+|--------|-----------|
+| `parse_string_object` | JSON 객체 문자열 파싱 후 필드 값 일치 |
+| `parse_string_array` | JSON 배열 파싱 후 ArrayNode 반환 |
+| `parse_string_invalid_throwsIOException` | 잘못된 JSON → IOException |
+| `parse_file_roundTrip` | 저장 후 파일 파싱 시 동일한 값 반환 |
+| `parse_file_missing_throwsIOException` | 없는 파일 파싱 → IOException |
+| `save_createsFileWithContent` | 파일 생성 및 내용 일치 확인 |
+| `save_createsParentDirectories` | 부모 디렉토리 자동 생성 |
+| `stringify_roundTrip` | JsonNode → 문자열 → 재파싱 시 값 일치 |
+| `isValid_validJson_returnsTrue` | 올바른 JSON(객체·배열·숫자·빈 배열) → true |
+| `isValid_invalidJson_returnsFalse` | 잘못된 JSON·빈 문자열 → false |
+
+#### `JsonDatabaseTest` — 25개
+
+| 범주 | 주요 검증 항목 |
+|------|----------------|
+| 초기화 (2) | 파일 없으면 빈 `{}` 자동 생성, 기존 파일 내용 유지 |
+| put (5) | 신규 키 true, 중복 키 false, 문자열·객체 값 저장, 파일 영속성 |
+| get (3) | 존재 키 값 반환, 없는 키 empty, 빈 DB에서 empty |
+| getAll (2) | 전체 항목 반환, 빈 DB에서 빈 Map |
+| exists (2) | 존재 키 true, 없는 키 false |
+| update (4) | 값 교체, 없는 키 false, 다른 키 영향 없음, 파일 영속성 |
+| delete (5) | 키 제거, 없는 키 false, 다른 키 영향 없음, 파일 영속성, 이후 재조회 empty |
+| 파일 형식 (2) | pretty-print, 항상 유효한 JSON |
+
+---
+
+### Regression Test
+
+**목적:** 리팩토링·기능 추가 이후에도 기존에 정상 동작하던 기능이 동일하게 동작하는지 확인합니다. 이 테스트가 전부 통과하면 기존 동작이 보존된 것입니다.
+
+**파일 위치:** `src/test/java/org/example/regression/RegressionTest.java`
+
+#### 24개 테스트 항목
+
+| 범주 | 테스트 | 검증 내용 |
+|------|--------|-----------|
+| Handler 기본 동작 | `handler_parse_string_preservesValues` | JSON 파싱 후 필드 값 유지 |
+| | `handler_saveAndParse_roundTrip` | 저장 → 재파싱 값 동일 |
+| | `handler_isValid_correctlyClassifies` | 유효/무효 JSON 분류 정확성 |
+| CRUD 반환값 계약 | `db_put_newKey_returnsTrue` | 신규 키 put → true |
+| | `db_put_duplicateKey_returnsFalse` | 중복 키 put → false |
+| | `db_update_existingKey_returnsTrue` | 존재 키 update → true |
+| | `db_update_missingKey_returnsFalse` | 없는 키 update → false |
+| | `db_delete_existingKey_returnsTrue` | 존재 키 delete → true |
+| | `db_delete_missingKey_returnsFalse` | 없는 키 delete → false |
+| 값 보존 계약 | `db_numberValue_preservedOnRoundTrip` | 숫자 값 put → get 시 변하지 않음 |
+| | `db_stringValue_preservedOnRoundTrip` | 문자열 값 put → get 시 변하지 않음 |
+| | `db_objectValue_preservedOnRoundTrip` | 중첩 객체 put → get 시 변하지 않음 |
+| | `db_put_duplicate_originalValueUnchanged` | 중복 put 시도 후 기존 값 유지 |
+| 독립성 계약 | `db_update_doesNotAffectOtherKeys` | update는 지정 키만 변경 |
+| | `db_delete_doesNotAffectOtherKeys` | delete는 지정 키만 제거 |
+| 순서 보존 | `db_getAll_preservesInsertionOrder` | 삽입 순서대로 반환 |
+| 영속성 계약 | `db_put_persistsAcrossInstances` | put 후 새 인스턴스 로드 시 유지 |
+| | `db_update_persistsAcrossInstances` | update 후 새 인스턴스 로드 시 유지 |
+| | `db_delete_persistsAcrossInstances` | delete 후 새 인스턴스 로드 시 키 없음 |
+| 파일 형식 계약 | `db_savedFile_isPrettyPrinted` | 들여쓰기·줄바꿈 포함 형식 |
+| | `db_savedFile_isAlwaysValidJson` | 연산 후에도 항상 유효한 JSON |
+| 전체 흐름 | `db_fullCrudCycle` | put → get → update → delete 순서 정상 동작 |
+
+---
+
+### Safety Test
+
+**목적:** 예상치 못한 입력이나 오용 시나리오에서 데이터 손상 없이 안전하게 반응하는지 확인합니다.
+
+**파일 위치:** `src/test/java/org/example/safety/SafetyTest.java`
+
+#### 21개 테스트 항목
+
+| 범주 | 테스트 | 검증 내용 |
+|------|--------|-----------|
+| 키 edge 케이스 | `key_emptyString_worksCorrectly` | 빈 문자열 `""` 키 정상 저장·조회 |
+| | `key_withSpaces_worksCorrectly` | 공백 포함 키 정상 처리 |
+| | `key_withSpecialChars_worksCorrectly` | `!@#$%^&*()` 특수문자 키 정상 처리 |
+| | `key_unicode_worksCorrectly` | 한국어·이모지 키 정상 처리 |
+| | `key_variousSpecialForms_storedAndRetrievedCorrectly` | `.` `/` `\` `"` `:` `\t` 등 파라미터화 테스트 |
+| 값 타입 edge 케이스 | `value_booleanTrue/False_storedCorrectly` | boolean 값 저장·조회 |
+| | `value_jsonNull_keyExistsButValueIsNull` | JSON null 값 저장 시 키는 존재, 값은 null |
+| | `value_emptyObject/Array_storedCorrectly` | `{}` `[]` 빈 컨테이너 저장·조회 |
+| | `value_array_storedCorrectly` | 배열 값 저장·조회 |
+| | `value_negativeNumber_storedCorrectly` | 음수 값 저장·조회 |
+| | `value_floatNumber_storedWithoutPrecisionLoss` | 소수 정밀도 손실 없이 저장 |
+| | `value_deeplyNestedObject_storedCorrectly` | 깊은 중첩 객체 손상 없이 저장 |
+| 오용 시나리오 | `misuse_putAfterDelete_keyCanBeReused` | 삭제 후 같은 키로 재등록 가능 |
+| | `misuse_deleteCalledTwice_secondReturnsFalse` | 연속 delete 시 두 번째는 false, 예외 없음 |
+| | `misuse_updateNonExistentKey_dbUnchanged` | 없는 키 연속 update 시 DB 변경 없음 |
+| | `misuse_updateChangesValueType_worksCorrectly` | update로 값 타입 변경 (숫자 → 객체) |
+| | `misuse_deleteAllKeys_dbBecomesEmpty` | 전체 삭제 후 빈 DB에서 새 데이터 추가 가능 |
+| | `misuse_repeatedOperationsOnSameKey_dbRemainsConsistent` | 동일 키 반복 CRUD 후 DB 일관성 유지 |
+| 손상된 파일 | `corruption_invalidJsonFile_throwsIOException` | 잘못된 JSON 파일 접근 시 IOException |
+| | `corruption_emptyFile_throwsIOException` | 빈 파일 접근 시 IOException |
+| null 안전성 | `handler_isValid_null_returnsFalse` | `isValid(null)` → 예외 없이 false 반환 |
+
+> **버그 수정 포함:** Safety 테스트 작성 과정에서 `isValid(null)` 호출 시 `NullPointerException`이 발생하는 버그가 발견되어 수정되었습니다. null 또는 빈 문자열이 입력되면 예외 없이 `false`를 반환합니다.
 
 ---
 
@@ -464,31 +574,20 @@ build/reports/tests/test/index.html
 - [ ] 삭제 후 해당 키가 사라지는지
 - [ ] 새 인스턴스로 파일을 로드해도 데이터가 유지되는지 (영속성)
 
-### CRUD 앱 - 추가
+### CRUD 앱 수동 테스트
 - [ ] 숫자 값이 올바르게 저장되는지
 - [ ] 평문 입력이 JSON 문자열로 자동 변환되는지
 - [ ] JSON 객체 값이 저장되는지
 - [ ] 중복 키 입력 시 기존 값이 유지되는지
-
-### CRUD 앱 - 조회
 - [ ] 전체 조회 시 모든 key-value가 출력되는지
-- [ ] DB가 비어있을 때 안내 메시지가 출력되는지
 - [ ] 키로 조회 시 해당 값만 반환되는지
 - [ ] 중첩 객체가 보기 좋게 출력되는지
-- [ ] 존재하지 않는 키 조회 시 안내 메시지가 출력되는지
+- [ ] 수정 전 현재 값이 표시되고 수정 후 새 값으로 교체되는지
+- [ ] `y` 입력 시 키가 삭제되고, `n` 입력 시 유지되는지
+- [ ] 앱 종료 후 재실행해도 데이터가 유지되는지
 
-### CRUD 앱 - 수정
-- [ ] 수정 전 현재 값이 표시되는지
-- [ ] 수정 후 새 값으로 교체되는지
-- [ ] 값 타입 변경(숫자 → 객체 등)이 가능한지
-- [ ] 존재하지 않는 키 수정 시 안내 메시지가 출력되는지
-
-### CRUD 앱 - 삭제
-- [ ] `y` 입력 시 키가 삭제되는지
-- [ ] `n` 입력 시 데이터가 유지되는지
-- [ ] 존재하지 않는 키 삭제 시 안내 메시지가 출력되는지
-
-### 영속성
-- [ ] 앱 종료 후 `data/db.json` 파일이 남아있는지
-- [ ] 앱 재실행 후 이전 데이터를 그대로 사용할 수 있는지
-- [ ] `data/db.json`이 사람이 읽기 좋은 형태(들여쓰기 포함)로 저장되는지
+### 자동화 테스트
+- [ ] `.\gradlew.bat test` 실행 시 **81개 전부 통과**하는지
+- [ ] Regression Test 24개 전부 통과하는지 (기존 동작 보존)
+- [ ] Safety Test 21개 전부 통과하는지 (edge 케이스 안전 처리)
+- [ ] 테스트 리포트(`build/reports/tests/test/index.html`)에서 실패 항목이 없는지
